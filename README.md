@@ -3,7 +3,7 @@
 > Real WiFi speed and ping — always visible in your menu bar.
 
 <p align="center">
-  <a href="https://YOUR_USERNAME.github.io/wifi-signal/">
+  <a href="https://applel0ver-lab.github.io/wifi-signal-macos/">
     <img src="https://img.shields.io/badge/Install-Open%20guide-0071e3?style=for-the-badge&logo=apple&logoColor=white" alt="Install — open installation guide" />
   </a>
 </p>
