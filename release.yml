@@ -1,0 +1,51 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    name: Build and release
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app
+
+      - name: Build archive
+        run: |
+          xcodebuild archive \
+            -scheme wifi-signal \
+            -configuration Release \
+            -archivePath build/wifi-signal.xcarchive \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Export app
+        run: |
+          xcodebuild -exportArchive \
+            -archivePath build/wifi-signal.xcarchive \
+            -exportOptionsPlist ExportOptions.plist \
+            -exportPath build/export
+
+      - name: Create DMG
+        run: |
+          hdiutil create \
+            -volname "wifi-signal" \
+            -srcfolder build/export/wifi-signal.app \
+            -ov -format UDZO \
+            build/wifi-signal.dmg
+
+      - name: Upload release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/wifi-signal.dmg
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
