@@ -1,5 +1,8 @@
-name: Build macOS App
+name: Build and Release macOS App
 on: [workflow_dispatch]
+
+permissions:
+  contents: write # Grants the cloud runner permission to publish a release to your repo
 
 jobs:
   build:
@@ -12,7 +15,6 @@ jobs:
         run: |
           mkdir -p build_output/WiFiStats.app/Contents/MacOS
           
-          # Writes a native Swift application using CoreWLAN to fetch hardware metrics
           cat << 'EOF' > main.swift
           import AppKit
           import CoreWLAN
@@ -25,7 +27,6 @@ jobs:
                   statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
                   statusItem?.button?.title = "📡 ..."
                   
-                  // Refreshes the metrics safely in the background every 3 seconds
                   timer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { _ in
                       self.updateWiFiMetrics()
                   }
@@ -49,13 +50,8 @@ jobs:
           app.run()
           EOF
 
-          # Compile the Intel slice
           xcrun -sdk macosx swiftc main.swift -target x86_64-apple-macos14 -o binary_intel
-          
-          # Compile the Apple Silicon slice
           xcrun -sdk macosx swiftc main.swift -target arm64-apple-macos14 -o binary_arm64
-          
-          # Fuse both architectures together into a unified universal executable binary file
           lipo -create binary_intel binary_arm64 -output build_output/WiFiStats.app/Contents/MacOS/WiFiStats
 
       - name: Build Application Info Blueprint
@@ -83,10 +79,19 @@ jobs:
 
       - name: Build DMG Container
         run: |
-          hdiutil create -volname "WiFiStats" -srcfolder build_output -ov -format UDZO wifi-signal-macos.dmg
+          hdiutil create -volname "WiFiStats" -srcfolder build_output -ov -format UDZO WiFiStats.dmg
 
-      - name: Upload Clean Package Asset
-        uses: actions/upload-artifact@v4
+      - name: Generate Dynamic Version Tag
+        id: tag
+        run: echo "release_tag=v1.0.${{ github.run_number }}" >> $GITHUB_OUTPUT
+
+      - name: Publish Official GitHub Release
+        uses: softprops/action-gh-release@v2
         with:
-          name: working-mac-app
-          path: wifi-signal-macos.dmg
+          tag_name: ${{ steps.tag.outputs.release_tag }}
+          name: Release ${{ steps.tag.outputs.release_tag }}
+          body: |
+            ### WiFiStats Universal Build
+            Successfully compiled for both Intel (x86_64) and Apple Silicon (arm64) architectures.
+            Bypasses Gatekeeper (requires 'Open Anyway' in System Settings).
+          files: WiFiStats.dmg
