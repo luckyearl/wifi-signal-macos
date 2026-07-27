@@ -49,11 +49,14 @@ jobs:
           app.run()
           EOF
 
-          # Compiles dual architectures simultaneously (Intel x86_64 + Apple arm64)
-          xcrun -sdk macosx swiftc main.swift \
-                -target x86_64-apple-macos15 \
-                -target arm64-apple-macos15 \
-                -o build_output/WiFiStats.app/Contents/MacOS/WiFiStats
+          # Compile the Intel slice
+          xcrun -sdk macosx swiftc main.swift -target x86_64-apple-macos14 -o binary_intel
+          
+          # Compile the Apple Silicon slice
+          xcrun -sdk macosx swiftc main.swift -target arm64-apple-macos14 -o binary_arm64
+          
+          # Fuse both architectures together into a unified universal executable binary file
+          lipo -create binary_intel binary_arm64 -output build_output/WiFiStats.app/Contents/MacOS/WiFiStats
 
       - name: Build Application Info Blueprint
         run: |
@@ -73,7 +76,7 @@ jobs:
               <key>LSUIElement</key>
               <string>1</string>
               <key>LSMinimumSystemVersion</key>
-              <string>15.0</string>
+              <string>14.0</string>
           </dict>
           </plist>
           EOF
