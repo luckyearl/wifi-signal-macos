@@ -2,7 +2,7 @@ name: Build and Release macOS App
 on: [workflow_dispatch]
 
 permissions:
-  contents: write # Grants the cloud runner permission to publish a release to your repo
+  contents: write
 
 jobs:
   build:
@@ -11,7 +11,7 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Create Universal Swift Menu Bar App
+      - name: Create Advanced Swift Menu Bar App
         run: |
           mkdir -p build_output/WiFiStats.app/Contents/MacOS
           
@@ -22,24 +22,64 @@ jobs:
           class MenuAppDelegate: NSObject, NSApplicationDelegate {
               var statusItem: NSStatusItem?
               var timer: Timer?
+              
+              // Custom drop-down menu items
+              let txRateMenuItem = NSMenuItem(title: "Tx Rate: Fetching...", action: nil, keyEquivalent: "")
+              let rssiMenuItem = NSMenuItem(title: "Signal (RSSI): Fetching...", action: nil, keyEquivalent: "")
+              let noiseMenuItem = NSMenuItem(title: "Noise: Fetching...", action: nil, keyEquivalent: "")
 
               func applicationDidFinishLaunching(_ notification: Notification) {
                   statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-                  statusItem?.button?.title = "📡 ..."
                   
+                  if let button = statusItem?.button {
+                      // Binds a clean native Apple SF Symbol vector icon directly to the menu bar line
+                      if #available(macOS 11.0, *) {
+                          button.image = NSImage(systemSymbolName: "dot.radiowaves.left.and.right", accessibilityDescription: "Wi-Fi Stats")
+                          button.imagePosition = .imageLeft
+                      }
+                      button.title = " Loading..."
+                  }
+                  
+                  setupMenu()
+                  
+                  // Refreshes the hardware measurements in the background every 3 seconds
                   timer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { _ in
                       self.updateWiFiMetrics()
                   }
                   timer?.fire()
               }
 
+              func setupMenu() {
+                  let menu = NSMenu()
+                  
+                  // Populates diagnostic rows
+                  menu.addItem(txRateMenuItem)
+                  menu.addItem(rssiMenuItem)
+                  menu.addItem(noiseMenuItem)
+                  menu.addItem(NSMenuItem.separator())
+                  
+                  // Appends the critical Quit process trigger button
+                  let quitItem = NSMenuItem(title: "Quit WiFiStats", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+                  menu.addItem(quitItem)
+                  
+                  statusItem?.menu = menu
+              }
+
               func updateWiFiMetrics() {
                   guard let interface = CWWiFiClient.shared().interface() else { return }
+                  
                   let rssi = interface.rssiValue()
                   let noise = interface.noiseMeasurement()
+                  let txRate = interface.transmitRate()
                   
                   DispatchQueue.main.async {
-                      self.statusItem?.button?.title = "S:\(rssi) N:\(noise)"
+                      // Updates the scannable menu bar text directly
+                      self.statusItem?.button?.title = " S:\(rssi) N:\(noise)"
+                      
+                      // Updates the drop-down menu parameters dynamically
+                      self.txRateMenuItem.title = "Transmission Rate: \(Int(txRate)) Mbps"
+                      self.rssiMenuItem.title = "Signal Strength (RSSI): \(rssi) dBm"
+                      self.noiseMenuItem.title = "Background Noise: \(noise) dBm"
                   }
               }
           }
@@ -50,6 +90,7 @@ jobs:
           app.run()
           EOF
 
+          # Compiles matching architecture slices for Intel and Apple Silicon hardware targets
           xcrun -sdk macosx swiftc main.swift -target x86_64-apple-macos14 -o binary_intel
           xcrun -sdk macosx swiftc main.swift -target arm64-apple-macos14 -o binary_arm64
           lipo -create binary_intel binary_arm64 -output build_output/WiFiStats.app/Contents/MacOS/WiFiStats
@@ -83,7 +124,7 @@ jobs:
 
       - name: Generate Dynamic Version Tag
         id: tag
-        run: echo "release_tag=v1.0.${{ github.run_number }}" >> $GITHUB_OUTPUT
+        run: echo "release_tag=v1.1.${{ github.run_number }}" >> $GITHUB_OUTPUT
 
       - name: Publish Official GitHub Release
         uses: softprops/action-gh-release@v2
@@ -91,7 +132,10 @@ jobs:
           tag_name: ${{ steps.tag.outputs.release_tag }}
           name: Release ${{ steps.tag.outputs.release_tag }}
           body: |
-            ### WiFiStats Universal Build
-            Successfully compiled for both Intel (x86_64) and Apple Silicon (arm64) architectures.
-            Bypasses Gatekeeper (requires 'Open Anyway' in System Settings).
+            ### WiFiStats Premium Feature Pack
+            - **Universal binary** matching Intel (`x86_64`) and Apple Silicon (`arm64`) runtimes natively.
+            - Added interactive dropdown menu UI layer.
+            - Integrated live hardware **Tx Rate** diagnostics.
+            - Implemented an interface **Quit** command mechanism (`Cmd+Q`).
+            - Enabled native **SF Symbols antenna icon rendering asset**.
           files: WiFiStats.dmg
