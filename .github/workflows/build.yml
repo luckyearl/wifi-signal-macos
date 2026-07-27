@@ -1,5 +1,5 @@
 name: Build macOS App
-on: [workflow_dispatch] # Allows you to trigger the build manually
+on: [workflow_dispatch]
 
 jobs:
   build:
@@ -8,14 +8,34 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Build App Bundle
+      - name: Compile Swift Code Directly
         run: |
-          xcodebuild -project "wifi-signal-macos.xcodeproj" -scheme "wifi-signal-macos" -configuration Release CODE_SIGNING_ALLOWED=NO clean build
+          mkdir -p build_output/wifi-signal-macos.app/Contents/MacOS
+          # Find all Swift files and compile them straight into a binary executable
+          find . -name "*.swift" -print0 | xargs -0 xcrun -sdk macosx swiftc -o build_output/wifi-signal-macos.app/Contents/MacOS/wifi-signal-macos
+          
+          # Create the required minimal macOS Info.plist framework structure
+          cat <<EOF > build_output/wifi-signal-macos.app/Contents/Info.plist
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://apple.com">
+          <plist version="1.0">
+          <dict>
+              <key>CFBundleExecutable</key>
+              <string>wifi-signal-macos</string>
+              <key>CFBundleIdentifier</key>
+              <string>com.cloudbuild.wifisignal</string>
+              <key>CFBundleName</key>
+              <string>wifi-signal-macos</string>
+              <key>CFBundlePackageType</key>
+              <string>APPL</string>
+              <key>LSUIElement</key>
+              <string>1</string>
+          </dict>
+          </plist>
+          EOF
 
       - name: Create DMG File
         run: |
-          mkdir build_output
-          cp -R build/Release/wifi-signal-macos.app build_output/
           hdiutil create -volname "wifi-signal-macos" -srcfolder build_output -ov -format UDZO wifi-signal-macos.dmg
 
       - name: Upload Finished DMG File
