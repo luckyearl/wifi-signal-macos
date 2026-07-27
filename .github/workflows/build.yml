@@ -1,0 +1,25 @@
+name: Build macOS App
+on: [workflow_dispatch] # Allows you to trigger the build manually
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Build App Bundle
+        run: |
+          xcodebuild -project "wifi-signal-macos.xcodeproj" -scheme "wifi-signal-macos" -configuration Release CODE_SIGNING_ALLOWED=NO clean build
+
+      - name: Create DMG File
+        run: |
+          mkdir build_output
+          cp -R build/Release/wifi-signal-macos.app build_output/
+          hdiutil create -volname "wifi-signal-macos" -srcfolder build_output -ov -format UDZO wifi-signal-macos.dmg
+
+      - name: Upload Finished DMG File
+        uses: actions/upload-artifact@v4
+        with:
+          name: compiled-mac-app
+          path: wifi-signal-macos.dmg
