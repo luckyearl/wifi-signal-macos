@@ -5,73 +5,57 @@ jobs:
   build:
     runs-on: macos-latest
     steps:
-      - name: Create Native Swift Menu Bar App
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Create Universal Swift Menu Bar App
         run: |
           mkdir -p build_output/WiFiStats.app/Contents/MacOS
           
-          # Writes a genuine native Swift source code file that interfaces cleanly with macOS AppKit
+          # Writes a native Swift application using CoreWLAN to fetch hardware metrics
           cat << 'EOF' > main.swift
           import AppKit
+          import CoreWLAN
 
           class MenuAppDelegate: NSObject, NSApplicationDelegate {
               var statusItem: NSStatusItem?
               var timer: Timer?
 
               func applicationDidFinishLaunching(_ notification: Notification) {
-                  // Creates a permanent application presence directly on the menu bar
                   statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-                  statusItem?.button?.title = "Searching..."
+                  statusItem?.button?.title = "📡 ..."
                   
-                  // Sets up a continuous lightweight network query interval thread
+                  // Refreshes the metrics safely in the background every 3 seconds
                   timer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { _ in
                       self.updateWiFiMetrics()
                   }
                   timer?.fire()
               }
 
-              @objc func updateWiFiMetrics() {
-                  let task = Process()
-                  task.launchPath = "/usr/bin/xcrun"
-                  task.arguments = ["airport", "-I"]
+              func updateWiFiMetrics() {
+                  guard let interface = CWWiFiClient.shared().interface() else { return }
+                  let rssi = interface.rssiValue()
+                  let noise = interface.noiseMeasurement()
                   
-                  let pipe = Pipe()
-                  task.standardOutput = pipe
-                  task.launch()
-                  
-                  let data = pipe.fileHandleForReading.readDataToEndOfFile()
-                  if let output = String(data: data, encoding: .utf8) {
-                      let lines = output.components(separatedBy: "\n")
-                      var rssi = "N/A"
-                      var noise = "N/A"
-                      
-                      for line in lines {
-                          if line.contains("agrCtlRSSI:") {
-                              rssi = line.components(separatedBy: ":").last?.trimmingCharacters(in: .whitespaces) ?? "N/A"
-                          }
-                          if line.contains("agrCtlNoise:") {
-                              noise = line.components(separatedBy: ":").last?.trimmingCharacters(in: .whitespaces) ?? "N/A"
-                          }
-                      }
-                      
-                      // Safely updates the interface menu UI bar on the main system rendering thread
-                      DispatchQueue.main.async {
-                          self.statusItem?.button?.title = "S:\(rssi) N:\(noise)"
-                      }
+                  DispatchQueue.main.async {
+                      self.statusItem?.button?.title = "S:\(rssi) N:\(noise)"
                   }
               }
           }
 
-          // Instantiates the native Application loop thread
           let app = NSApplication.shared
           let delegate = MenuAppDelegate()
           app.delegate = delegate
           app.run()
           EOF
 
-          # Compiles the Swift layout using modern SDK parameters directly into an application binary core
-          xcrun -sdk macosx swiftc main.swift -o build_output/WiFiStats.app/Contents/MacOS/WiFiStats
+          # Compiles dual architectures simultaneously (Intel x86_64 + Apple arm64)
+          xcrun -sdk macosx swiftc main.swift \
+                -target x86_64-apple-macos15 \
+                -target arm64-apple-macos15 \
+                -o build_output/WiFiStats.app/Contents/MacOS/WiFiStats
 
-      - name: Create Native Configuration Blueprint
+      - name: Build Application Info Blueprint
         run: |
           cat <<EOF > build_output/WiFiStats.app/Contents/Info.plist
           <?xml version="1.0" encoding="UTF-8"?>
@@ -88,11 +72,13 @@ jobs:
               <string>APPL</string>
               <key>LSUIElement</key>
               <string>1</string>
+              <key>LSMinimumSystemVersion</key>
+              <string>15.0</string>
           </dict>
           </plist>
           EOF
 
-      - name: Build DMG Layout Container
+      - name: Build DMG Container
         run: |
           hdiutil create -volname "WiFiStats" -srcfolder build_output -ov -format UDZO wifi-signal-macos.dmg
 
